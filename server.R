@@ -133,42 +133,54 @@ shinyServer(function(input, output) {
       # get data used to estimate depth of col
 			ests <- max_est(data.frame(buff_pts), 
         								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS', 
-        								cont_name = 'Continuous',
 												dat_out = T)
     	
-      # simple plot of proportion of 'occupied' points at depth bins
-      to_plo <- ests
-      to_plo <- melt(to_plo, id.var = 'depth')
-      to_plo$growth_cat <- factor(to_plo$variable, levels = c('all', 'cont'), 
-                                  labels = c('All', 'Continuous'))
-      
-      # actual ests
-    	act_ests <- max_est(data.frame(buff_pts), 
-        								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS', 
-        								cont_name = 'Continuous')
-    	act_ests <- round(act_ests, 2)
-      
-      ##
-      # plot cumulative distribution curves from data
-      
-      cols  <- c('lightgreen', 'lightblue')
-      linesz <- 1
-      
-      p2 <- ggplot(to_plo, aes(x = value, y = depth, group = variable,
-                               colour = growth_cat)) +
-        geom_line(size = linesz) +
-       	xlab('Cumulative frequency') +
-        ylab('Depth (m)') +
-        scale_colour_manual('Growth\ncategory', values = cols) +
-        theme(legend.position = c(0.8, 0.8))
-      
-      ests <- paste0('All: Zmax ', act_ests[1], ' Z50 ', act_ests[2], '\n', 
-                     'Continuous: Zmax ', act_ests[3], ' Z50 ', act_ests[4])
-      
-      grid.arrange(p1, p2, 
-                   ncol = 1, 
-                   main = ests
-      )
+#       # actual ests
+#     	act_ests <- max_est(data.frame(buff_pts), 
+#         								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS', 
+#         								cont_name = 'Continuous')
+#     	act_ests <- round(act_ests, 2)
+    	
+    	##
+			# simple plot of points by depth, all pts and those with seagrass
+			to_plo <- ests
+			to_plo <- melt(to_plo, id.var = 'Depth', 
+				measure.var = c('dep_cum', 'sg_cum'))
+			to_plo$variable <- factor(to_plo$variable, levels = c('dep_cum', 'sg_cum'), 
+			                            labels = c('All points', 'Seagrass points'))
+    	
+			cols  <- c('lightgreen', 'lightblue')
+			linesz <- 1
+			
+			p2 <- ggplot(to_plo, aes(x = -1 * Depth, y = value, group = variable,
+			                         colour = variable)) +
+			  geom_line(size = linesz) +
+			 	ylab('No. of points') +
+			  xlab('Depth (m)') +
+			  scale_colour_manual('Point category', values = cols) +
+			  theme(legend.position = c(0.2, 0.85))
+
+    	##
+    	# plot slope of cumulative point curves
+    	
+			to_plo <- ests
+			to_plo <- melt(to_plo, id.var = 'Depth', 
+				measure.var = c('dep_slo', 'sg_slo'))
+			to_plo$variable <- factor(to_plo$variable, levels = c('dep_slo', 'sg_slo'), 
+			                            labels = c('All slope', 'Seagrass slope'))
+			
+			
+			p3 <- ggplot(to_plo, aes(x = -1 * Depth, y = value, group = variable,
+			                         colour = variable)) +
+			  geom_line(size = linesz) +
+			 	ylab('Slope') +
+			  xlab('Depth (m)') +
+			  scale_colour_manual('Point category', values = cols) +
+			  theme(legend.position = 'none')
+
+			grid.arrange(p1,
+				arrangeGrob(p2, p3, ncol = 2), 
+				ncol = 1)
       
     }
     

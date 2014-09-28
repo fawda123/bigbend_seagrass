@@ -8,21 +8,33 @@
 # 'sg_var' is name of seagrass column in input data
 # 'cont_name' variable in 'sg_var' that defines continuous growth
 # 'dat_out' is logical indicating if cumulative dist ests are returned
-max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
-	cont_name = 'Continuous', dat_out = F){
+max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass', 
+	dat_out = F){
   
 	# order by depth, assumes column is negative
   dat_in <- dat_in[order(dat_in[, depth_var], decreasing = T), ]
 	dat_in$depth <- dat_in[, depth_var]
 	
-	# cumulative distribution for continuous, all seagrass
-	sgcont <- cumsum(dat_in[, sg_var] %in% cont_name)
-	dat_in$cont <- sgcont/max(sgcont)
-	sgall <- cumsum(!is.na(dat_in[, sg_var]))
-	dat_in$all <- sgall/max(sgall)
+	# cumulative sum of pts with all seagrass and all points
+	# assumes NA is empty
+	sg_pts <- rev(table(dat_in[!is.na(dat_in[, sg_var]), depth_var]))
+	sg_pts <- data.frame(Depth = names(sg_pts), sg_pts = sg_pts,
+		sg_cum = cumsum(sg_pts), row.names = 1:length(sg_pts))
+	dep_pts <- rev(table(dat_in[, depth_var]))
+	dep_pts <- data.frame(Depth = names(dep_pts), dep_pts = dep_pts, 
+		dep_cum = cumsum(dep_pts), row.names = 1:length(dep_pts))
+	
+	# combine all pts and seagrass pts, depth as numeric
+	pts <- merge(dep_pts, sg_pts, by = 'Depth', all.x = T)
+	pts$Depth <- as.numeric(as.character(pts$Depth))
+	pts$sg_prp <- with(pts, sg_pts/dep_pts)
+	
+	# add slope ests to pts
+	pts$dep_slo <- with(pts, c(NA, -1 * diff(dep_cum)/diff(Depth)))
+	pts$sg_slo <- with(pts, c(NA, -1 * diff(sg_cum)/diff(Depth)))
 	
 	# return cumulative data if T
-	if(dat_out) return(dat_in[, c('depth', 'all', 'cont')])
+	if(dat_out) return(pts)
 	
 	# get max (95th) and median (50th) depth for all seagrass
 	max_depth_all <- dat_in[which.min(abs(dat_in[, 'all'] - 0.95)), 'depth']
