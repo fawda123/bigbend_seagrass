@@ -28,17 +28,18 @@ shinyUI(pageWithSidebar(
                  max=2, 
                  value=0.04, step = 0.01),
     
+  	numericInput("thresh",
+  							label = h3('Slope threshold\n(Proportion of all)'), 
+                 min=0.01, 
+                 max=0.5, 
+                 value=0.1, step = 0.01),
+   
+  	
     h3("Show all estimates"), 
     
     checkboxInput("show_all", 
                   label = '',
-                  value = FALSE),
-    
-    selectInput(inputId = 'est',
-                label = '',
-                choices = c('all - zmax', 'all - z50', 'cont - zmax', 
-                            'cont - z50'),
-                selected = 'all - zmax')
+                  value = FALSE)
     
 #     submitButton("Submit")
     

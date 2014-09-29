@@ -6,10 +6,10 @@
 # 'dat_in' is data frame of binned proportions, returned from 'sg_bins' func
 # 'depth_var' is name of depth column in input data
 # 'sg_var' is name of seagrass column in input data
-# 'cont_name' variable in 'sg_var' that defines continuous growth
+# 'thresh' is numeric indicating proportion of slope of all pts for defining max depth
 # 'dat_out' is logical indicating if cumulative dist ests are returned
 max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass', 
-	dat_out = F){
+	thresh = 0.1, dat_out = F){
   
 	# order by depth, assumes column is negative
   dat_in <- dat_in[order(dat_in[, depth_var], decreasing = T), ]
@@ -29,25 +29,42 @@ max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	pts$Depth <- as.numeric(as.character(pts$Depth))
 	pts$sg_prp <- with(pts, sg_pts/dep_pts)
 	
-	# add slope ests to pts
-	pts$dep_slo <- with(pts, c(NA, -1 * diff(dep_cum)/diff(Depth)))
-	pts$sg_slo <- with(pts, c(NA, -1 * diff(sg_cum)/diff(Depth)))
+	# add slope ests to pts, use actual lm ests
+	dep_slo <- rep(NA_real_, nrow(pts))
+	sg_slo <- rep(NA_real_, nrow(pts))
+	for(i in 1:nrow(pts)){
+		
+		sel <- i:(i + 3)
+		
+		dep_mod <- try(lm(dep_cum ~ Depth, pts[sel, ]), silent = T)
+		sg_mod <- try(lm(sg_cum ~ Depth, pts[sel, ]), silent = T)
+		
+		if('try-error' %in% c(class(dep_mod), class(sg_mod))) next
+			
+		dep_slo[i] <- -1 * coefficients(dep_mod)[2]
+		sg_slo[i] <- -1 * coefficients(sg_mod)[2]
+		
+		}
+
+	pts$dep_slo <- dep_slo
+	pts$sg_slo <- sg_slo
+	
+	# proportion slope line for depth points, thresh defines the proportion
+	pts$slo_thr <- thresh * pts$dep_slo
 	
 	# return cumulative data if T
 	if(dat_out) return(pts)
 	
-	# get max (95th) and median (50th) depth for all seagrass
-	max_depth_all <- dat_in[which.min(abs(dat_in[, 'all'] - 0.95)), 'depth']
-	med_depth_all <- dat_in[which.min(abs(dat_in[, 'all'] - 0.5)), 'depth']
+	# max depth of colonization
+	sel <- which(with(pts, sg_slo <= slo_thr))[1]
+
+	if(length(sel) == 0) out <- c(zmax_all = NA)
+
+  else out <- c(zmax_all = pts[sel, 'Depth'])
 	
-	# get max (95th) and median (50th) depth for continuous seagrass
-	max_depth_cont <- dat_in[which.min(abs(dat_in[, 'cont'] - 0.95)), 'depth']
-	med_depth_cont <- dat_in[which.min(abs(dat_in[, 'cont'] - 0.5)), 'depth']
-		
-  # return output
-  out <- c(zmax_all = max_depth_all, z50_all = med_depth_all, 
-  	zmax_cont = max_depth_cont, z50_cont = med_depth_cont)
-  return(out)
+	# return output
+  
+	return(out)
   
 }
 
