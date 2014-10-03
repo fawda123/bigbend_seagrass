@@ -29,25 +29,29 @@ max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	pts$Depth <- as.numeric(as.character(pts$Depth))
 	pts$sg_prp <- with(pts, sg_pts/dep_pts)
 	
-	# add slope ests to pts, use actual lm ests
-	dep_slo <- rep(NA_real_, nrow(pts))
-	sg_slo <- rep(NA_real_, nrow(pts))
-	for(i in 1:nrow(pts)){
-		
-		sel <- i:(i + 3)
-		
-		dep_mod <- try(lm(dep_cum ~ Depth, pts[sel, ]), silent = T)
-		sg_mod <- try(lm(sg_cum ~ Depth, pts[sel, ]), silent = T)
-		
-		if('try-error' %in% c(class(dep_mod), class(sg_mod))) next
-			
-		dep_slo[i] <- -1 * coefficients(dep_mod)[2]
-		sg_slo[i] <- -1 * coefficients(sg_mod)[2]
-		
-		}
-
-	pts$dep_slo <- dep_slo
-	pts$sg_slo <- sg_slo
+	# add slope ests to pts, use differences
+	pts$dep_slo <- with(pts, c(NA, -1 * diff(dep_cum)/diff(Depth)))
+	pts$sg_slo <- with(pts, c(NA, -1 * diff(sg_cum)/diff(Depth)))
+	
+# 	# add slope ests to pts, use actual lm ests
+# 	dep_slo <- rep(NA_real_, nrow(pts))
+# 	sg_slo <- rep(NA_real_, nrow(pts))
+# 	for(i in 1:nrow(pts)){
+# 		
+# 		sel <- i:(i + 3)
+# 		
+# 		dep_mod <- try(lm(dep_cum ~ Depth, pts[sel, ]), silent = T)
+# 		sg_mod <- try(lm(sg_cum ~ Depth, pts[sel, ]), silent = T)
+# 		
+# 		if('try-error' %in% c(class(dep_mod), class(sg_mod))) next
+# 			
+# 		dep_slo[i] <- -1 * coefficients(dep_mod)[2]
+# 		sg_slo[i] <- -1 * coefficients(sg_mod)[2]
+# 		
+# 		}
+# 
+# 	pts$dep_slo <- dep_slo
+# 	pts$sg_slo <- sg_slo
 	
 	# proportion slope line for depth points, thresh defines the proportion
 	pts$slo_thr <- thresh * pts$dep_slo

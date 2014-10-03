@@ -49,6 +49,7 @@ shinyServer(function(input, output) {
 #     grid_seed <- 12
 #     test_pt <- 1
 #     radius <- 0.02
+#			thresh <- 0.1   	
 #     show_all <- F
     
     # input from ui
@@ -210,13 +211,13 @@ shinyServer(function(input, output) {
 			  labels = c('All', 'Seagrass', thresh_lab))
     	
 			p3 <- ggplot(to_plo, aes(x = -1 * Depth, y = value)) +
-			  geom_line(size = linesz, 
-			  	aes(group = variable, colour = variable, linetype = variable)
+			  geom_point(size = 3, 
+			  	aes(group = variable, colour = variable, shape = variable)
 			  	) +
 			 	ylab('CDF Slope') +
 			  xlab('Depth (m)') +
 			  scale_colour_manual('Slope category', values = c(cols, cols[1])) +
-				scale_linetype_manual('Slope category', values = c('solid', 'solid', 'dotted')) + 
+				scale_shape_manual('Slope category', values = c(16, 16, 1)) + 
 			  theme(legend.position = c(1, 1), legend.justification = c(1, 1))
 
     	##

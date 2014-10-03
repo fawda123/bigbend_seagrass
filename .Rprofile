@@ -21,6 +21,7 @@ library(rgdal)
 library(rgeos)
 library(gridExtra)
 library(shiny)
+library(MASS)
 
 # functions to use
 source('funcs.r')
