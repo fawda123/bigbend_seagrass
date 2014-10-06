@@ -72,7 +72,7 @@ shinyServer(function(input, output) {
         
         eval_pt <- pts[i, ]
         buff_pts <- buff_ext(sgpts_shp, eval_pt, buff = radius)
-        ests <- max_est(data.frame(buff_pts), thresh = thresh, 
+        ests <- doc_est(data.frame(buff_pts), thresh = thresh, 
         								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS' 
         								)
         maxd[[i]] <- ests
@@ -161,16 +161,23 @@ shinyServer(function(input, output) {
     			pch = 1
     		)
       
-      # get data used to estimate depth of col
-			ests <- max_est(data.frame(buff_pts), thresh = thresh, 
-        								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS', 
-												dat_out = T)
-    	
     	##
-      # actual ests
-    	act_ests <- max_est(data.frame(buff_pts), thresh = thresh, 
-        								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS'
-        								)
+     	# get data used to estimate depth of col
+			
+			est_pts <- data.frame(buff_pts)
+			est_pts$Depth <- -1 * est_pts$GRID_CODE
+			
+			# data
+			dat <- doc_est(est_pts, thresh = thresh, 
+				depth_var = 'Depth', sg_var = 'SEAGRASS', 
+				dat_out = T
+				)
+			
+			# get actual estimates for depth of col
+			act_ests <- doc_est(est_pts, thresh = thresh,
+				depth_var = 'Depth', sg_var = 'SEAGRASS'
+				)
+
     	
     	# format estimate for plot title
 			if(is.na(act_ests)){ act_ests <- 'Depth of col: Not estimable'
@@ -180,7 +187,7 @@ shinyServer(function(input, output) {
 
     	##
 			# simple plot of points by depth, all pts and those with seagrass
-			to_plo <- ests
+			to_plo <- dat
 			to_plo <- melt(to_plo, id.var = 'Depth', 
 				measure.var = c('dep_cum', 'sg_cum'))
 			to_plo$variable <- factor(to_plo$variable, levels = c('dep_cum', 'sg_cum'), 
@@ -189,40 +196,56 @@ shinyServer(function(input, output) {
 			cols  <- c('lightgreen', 'lightblue')
 			linesz <- 1
 			
-			p2 <- ggplot(to_plo, aes(x = -1 * Depth, y = value, group = variable,
+			p2 <- ggplot(to_plo, aes(x = Depth, y = value, group = variable,
 			                         colour = variable)) +
 			  geom_line(size = linesz) +
 			 	ylab('Cumulative points') +
 			  xlab('Depth (m)') +
 			  scale_colour_manual('Point category', values = cols) +
 			  theme(legend.position = c(0, 1), legend.justification = c(0,1))
-
-    	##
-    	# plot slope of cumulative point curves
-    	
+			
+			##
+			# plot slope of cumulative point curves
+			
 			# treshold label for legend
-    	thresh_lab <- paste0(round(100 * thresh), '% of all')
-    	
-			to_plo <- ests
+			thresh_lab <- paste0(round(100 * thresh), '% of all')
+			
+			to_plo <- dat
 			to_plo <- melt(to_plo, id.var = 'Depth', 
-				measure.var = c('dep_slo', 'sg_slo', 'slo_thr'))
+				measure.var = c('dep_slo', 'sg_slo'))
 			to_plo$variable <- factor(to_plo$variable, 
-				levels = c('dep_slo', 'sg_slo', 'slo_thr'), 
-			  labels = c('All', 'Seagrass', thresh_lab))
-    	
-			p3 <- ggplot(to_plo, aes(x = -1 * Depth, y = value)) +
-			  geom_point(size = 3, 
-			  	aes(group = variable, colour = variable, shape = variable)
+				levels = c('dep_slo', 'sg_slo'), 
+			  labels = c('All', 'Seagrass'))
+			
+			to_plo2 <- dat
+			to_plo2 <- melt(to_plo2, id.var = 'Depth', 
+				measure.var = grep('dep_est|sg_est|Threshold', names(dat), value = T)
+				)
+			to_plo2$variable <- factor(to_plo2$variable, 
+				labels = c('All', 'Seagrass', thresh_lab)
+			)
+			
+			col_pts <- rep(cols[1], nrow(to_plo))
+			col_pts[to_plo$variable == 'All'] <- cols[2]
+			
+			p3 <- ggplot(to_plo, aes(x = Depth, y = value)) +
+			  geom_point(size = 3, shape = 16, colour = col_pts
 			  	) +
+				geom_line(data = to_plo2, aes(x = Depth, y = value,
+					colour = variable, linetype = variable), size = linesz) +
 			 	ylab('CDF Slope') +
 			  xlab('Depth (m)') +
-			  scale_colour_manual('Slope category', values = c(cols, cols[1])) +
-				scale_shape_manual('Slope category', values = c(16, 16, 1)) + 
+			  scale_colour_manual('Slope category', 
+			  	values = c(cols[2], cols[1], cols[2], cols[2])
+			  	) +
+				scale_linetype_manual('Slope category', 
+					values = c('solid', 'solid', 'dashed', 'dashed')
+					) + 
 			  theme(legend.position = c(1, 1), legend.justification = c(1, 1))
-
-    	##
+			
+			##
     	# combine all plots
-   
+
 			grid.arrange(p1,
 				arrangeGrob(p2, p3, ncol = 2), 
 				ncol = 1, heights = c(1.25, 1),

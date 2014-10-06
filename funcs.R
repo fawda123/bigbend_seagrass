@@ -2,13 +2,14 @@
 # functions for seagrass depth of col estimates
 
 ######
-# function for estimating max depth of col
-# 'dat_in' is data frame of binned proportions, returned from 'sg_bins' func
+# function for estimating depth of colonization
+# also used for plots
+# 'dat_in' is data from 'buff_ext'
 # 'depth_var' is name of depth column in input data
 # 'sg_var' is name of seagrass column in input data
-# 'thresh' is numeric indicating proportion of slope of all pts for defining max depth
-# 'dat_out' is logical indicating if cumulative dist ests are returned
-max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass', 
+# 'thresh' is numeric threshold value for estimating depth of col
+# 'dat_out' is logical indicating if data are returned, otherwise depth of col ests
+doc_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	thresh = 0.1, dat_out = F){
   
 	# order by depth, assumes column is negative
@@ -17,11 +18,11 @@ max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	
 	# cumulative sum of pts with all seagrass and all points
 	# assumes NA is empty
-	sg_pts <- rev(table(dat_in[!is.na(dat_in[, sg_var]), depth_var]))
-	sg_pts <- data.frame(Depth = names(sg_pts), sg_pts = sg_pts,
+	sg_pts <- table(dat_in[!is.na(dat_in[, sg_var]), depth_var])
+	sg_pts <- data.frame(Depth = names(sg_pts), sg_pts = as.numeric(sg_pts),
 		sg_cum = cumsum(sg_pts), row.names = 1:length(sg_pts))
-	dep_pts <- rev(table(dat_in[, depth_var]))
-	dep_pts <- data.frame(Depth = names(dep_pts), dep_pts = dep_pts, 
+	dep_pts <- table(dat_in[, depth_var])
+	dep_pts <- data.frame(Depth = names(dep_pts), dep_pts = as.numeric(dep_pts), 
 		dep_cum = cumsum(dep_pts), row.names = 1:length(dep_pts))
 	
 	# combine all pts and seagrass pts, depth as numeric
@@ -30,46 +31,79 @@ max_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	pts$sg_prp <- with(pts, sg_pts/dep_pts)
 	
 	# add slope ests to pts, use differences
-	pts$dep_slo <- with(pts, c(NA, -1 * diff(dep_cum)/diff(Depth)))
-	pts$sg_slo <- with(pts, c(NA, -1 * diff(sg_cum)/diff(Depth)))
+	pts$dep_slo <- with(pts, c(NA, diff(dep_cum)/diff(Depth)))
+	pts$sg_slo <- with(pts, c(NA, diff(sg_cum)/diff(Depth)))
 	
-# 	# add slope ests to pts, use actual lm ests
-# 	dep_slo <- rep(NA_real_, nrow(pts))
-# 	sg_slo <- rep(NA_real_, nrow(pts))
-# 	for(i in 1:nrow(pts)){
-# 		
-# 		sel <- i:(i + 3)
-# 		
-# 		dep_mod <- try(lm(dep_cum ~ Depth, pts[sel, ]), silent = T)
-# 		sg_mod <- try(lm(sg_cum ~ Depth, pts[sel, ]), silent = T)
-# 		
-# 		if('try-error' %in% c(class(dep_mod), class(sg_mod))) next
-# 			
-# 		dep_slo[i] <- -1 * coefficients(dep_mod)[2]
-# 		sg_slo[i] <- -1 * coefficients(sg_mod)[2]
-# 		
-# 		}
-# 
-# 	pts$dep_slo <- dep_slo
-# 	pts$sg_slo <- sg_slo
+	pred_ls <- vector('list', length = 2)
+	names(pred_ls) <- c('sg_slo', 'dep_slo')
 	
-	# proportion slope line for depth points, thresh defines the proportion
-	pts$slo_thr <- thresh * pts$dep_slo
-	
-	# return cumulative data if T
-	if(dat_out) return(pts)
-	
-	# max depth of colonization
-	sel <- which(with(pts, sg_slo <= slo_thr))[1]
+	for(var in c('sg_slo', 'dep_slo')){
+		
+		# scale y values for easier parameters estimates
+		scl_val <- max(pts[, var], na.rm = T)
 
-	if(length(sel) == 0) out <- c(zmax_all = NA)
+		# subset data by maximum slope value
+		pts_sub <- pts[which.max(pts[, var]):nrow(pts), ]
+		pts_sub[, var] <- pts_sub[, var]/scl_val
+		
+		# function for calculating negative log likelihood
+		err_est <- function(parms = list(b1, b2, b3, b4)){
+			
+			b1 <- parms[[1]]
+			b2 <- parms[[2]]
+			b3 <- parms[[3]]
+			b4 <- parms[[4]]
+			
+			to_comp <- b1 + b2 * pts_sub$Depth + b3 * pts_sub$Depth^2
+			act <-  pts_sub[, var]
+			
+			resid <- na.omit(to_comp - act)
+			resid <- suppressWarnings(dnorm(resid, 0, b4))
+			
+			-sum(log(resid))
+			
+			}
 
-  else out <- c(zmax_all = pts[sel, 'Depth'])
+		# fine estimates using optim and get predictions
+		bs <- list(b1 = 1, b2 = -1, b3 = -1, b4 = 5)
+		res <- optim(par = bs, fn = err_est)$par
+		names(res) <- c('b1', 'b2', 'b3')
+		pred <- res['b1'] + res['b2'] * pts$Depth + res['b3'] * pts$Depth^2
+
+		pred_ls[[var]] <- scl_val * pred
+		
+	}
 	
 	# return output
-  
-	return(out)
-  
+	out <- data.frame(pts, dep_est = pred_ls[['dep_slo']],
+		sg_est =pred_ls[['sg_slo']])
+	
+	# add threshold data based on proportion of dep_slo 
+	threshs <- sapply(1:length(thresh), 
+		FUN = function(x) thresh[x] * pred_ls[['dep_slo']]
+		)
+	threshs <- data.frame(threshs)
+	names(threshs) <- paste('Threshold', thresh)
+	
+	out <- data.frame(out, threshs)
+	
+	# return data if T
+	if(dat_out) return(out)
+	
+	# calculate depth of col
+	doc <- sapply(thresh, 
+		FUN = function(x){
+			
+			col <- out[, grep(x, names(out))]
+			ind <- which(with(out,  sg_est <= col))[1]
+			out[ind, 'Depth']
+			
+			}
+		)
+	names(doc) <- thresh
+
+	return(doc)
+	  
 }
 
 #######
