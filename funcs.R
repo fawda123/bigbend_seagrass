@@ -8,9 +8,8 @@
 # 'depth_var' is name of depth column in input data
 # 'sg_var' is name of seagrass column in input data
 # 'thresh' is numeric threshold value for estimating depth of col
-# 'dat_out' is logical indicating if data are returned, otherwise depth of col ests
 doc_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
-	thresh = 0.1, dat_out = F){
+	thresh = 0.1){
   
 	# order by depth, assumes column is negative
   dat_in <- dat_in[order(dat_in[, depth_var], decreasing = T), ]
@@ -37,72 +36,81 @@ doc_est <- function(dat_in, depth_var = 'depth', sg_var = 'seagrass',
 	pred_ls <- vector('list', length = 2)
 	names(pred_ls) <- c('sg_slo', 'dep_slo')
 	
+	sg_slo_max <-pts[which.max(pts[, 'sg_slo']), 'Depth']
+	dep_slo_max <- pts[which.max(pts[,'dep_slo']), 'Depth']
+	min_dep <- min(c(sg_slo_max, dep_slo_max))	
+	
 	for(var in c('sg_slo', 'dep_slo')){
 		
-		# scale y values for easier parameters estimates
+		# scale y values for easier parameter estimates
 		scl_val <- max(pts[, var], na.rm = T)
 
-		# subset data by maximum slope value
+		# subset data by maximum and minimum slope value
+		max_ind <- which.max(pts[, var])
 		pts_sub <- pts[which.max(pts[, var]):nrow(pts), ]
 		pts_sub[, var] <- pts_sub[, var]/scl_val
-		
+		min_ind <- which(pts_sub[, var] < 0.05)[1]
+		if(!is.na(min_ind))
+			pts_sub <- pts_sub[1:min_ind,]
+	
 		# function for calculating negative log likelihood
-		err_est <- function(parms = list(b1, b2, b3, b4)){
+		err_est <- function(parms = list(b1, b2, b3)){
 			
 			b1 <- parms[[1]]
 			b2 <- parms[[2]]
 			b3 <- parms[[3]]
-			b4 <- parms[[4]]
 			
-			to_comp <- b1 + b2 * pts_sub$Depth + b3 * pts_sub$Depth^2
+			to_comp <- b1 + b2 * pts_sub$Depth
 			act <-  pts_sub[, var]
 			
 			resid <- na.omit(to_comp - act)
-			resid <- suppressWarnings(dnorm(resid, 0, b4))
+			resid <- suppressWarnings(dnorm(resid, 0, b3))
 			
 			-sum(log(resid))
 			
 			}
 
-		# fine estimates using optim and get predictions
-		bs <- list(b1 = 1, b2 = -1, b3 = -1, b4 = 5)
+		# find estimates using optim and get predictions
+		bs <- list(b1 = 1, b2 = -1, b3 = 1)
 		res <- optim(par = bs, fn = err_est)$par
 		names(res) <- c('b1', 'b2', 'b3')
-		pred <- res['b1'] + res['b2'] * pts$Depth + res['b3'] * pts$Depth^2
+		
+		# get predictions
+		max_dep <- -res[['b1']]/res[['b2']]
+		new.x <- seq(min_dep, max_dep, by = 0.01)
+		pred <- res['b1'] + res[['b2']] * new.x
+		pred <- data.frame(Depth = new.x, scl_val * pred)
+		names(pred) <- c('Depth', var)
 
-		pred_ls[[var]] <- scl_val * pred
+		pred_ls[[var]] <- pred
 		
 	}
 	
 	# return output
-	out <- data.frame(pts, dep_est = pred_ls[['dep_slo']],
-		sg_est =pred_ls[['sg_slo']])
+	out <- merge(pred_ls[[1]], pred_ls[[2]], by = 'Depth', all = T)
 	
 	# add threshold data based on proportion of dep_slo 
 	threshs <- sapply(1:length(thresh), 
-		FUN = function(x) thresh[x] * pred_ls[['dep_slo']]
+		FUN = function(x) thresh[x] * out[, 'dep_slo']
 		)
 	threshs <- data.frame(threshs)
 	names(threshs) <- paste('Threshold', thresh)
 	
 	out <- data.frame(out, threshs)
 	
-	# return data if T
-	if(dat_out) return(out)
-	
 	# calculate depth of col
 	doc <- sapply(thresh, 
 		FUN = function(x){
 			
 			col <- out[, grep(x, names(out))]
-			ind <- which(with(out,  sg_est <= col))[1]
+			ind <- which(with(out,  sg_slo <= col))[1]
 			out[ind, 'Depth']
 			
 			}
 		)
 	names(doc) <- thresh
 
-	return(doc)
+	return(list(data = pts, thresh = out, ests = doc))
 	  
 }
 

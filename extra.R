@@ -1,3 +1,4 @@
+source('.Rprofile')
 
 # segment polygon for old tampa bay
 seg_shp <- readShapeSpatial('seagrass_gis/seg_820.shp')
@@ -10,9 +11,9 @@ theme_set(theme_bw())
 
 # for debugging
 grid_spc <- 0.02
-grid_seed <- 12
-test_pt <- 25
-radius <- 0.02
+grid_seed <- 1234
+test_pt <- 2
+radius <- 0.04
 thresh <- 0.1   	
 show_all <- F
     
@@ -27,19 +28,6 @@ test_pt <- pts[test_pt, ]
 # get bathym points around test_pt
 buff_pts <- buff_ext(sgpts_shp, test_pt, buff = radius)
   
-# get data used to estimate depth of col
-ests <- max_est(data.frame(buff_pts), thresh = thresh, 
-  								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS', 
-									dat_out = T)
-    	
-ests$Depth <- -1 * ests$Depth
-
-par(mfrow = c(1,2), family = 'serif')
-plot(dep_cum ~ Depth, ests, col = 'lightblue', type = 'l')
-lines(sg_cum ~ Depth,  ests, col = 'lightgreen')
-plot(dep_slo ~ Depth, ests, col = 'lightblue', pch = 16)
-points(sg_slo ~ Depth, ests, col = 'lightgreen', pch = 16)
-
 ##
 # parameter optimization for a linear regression
 
@@ -140,32 +128,28 @@ lines(new.x, pred, col = 'blue')
 # example w/ actual data
 
 # get data used to estimate depth of col
-thresh <- c(0.1, 0.5)
+thresh <- c(0.1)
 
 est_pts <- data.frame(buff_pts)
 est_pts$Depth <- -1 * est_pts$GRID_CODE
 
 # data
 dat <- doc_est(est_pts, thresh = thresh, 
-	depth_var = 'Depth', sg_var = 'SEAGRASS', 
-	dat_out = T
-	)
-
-# actual ests
-act_ests <- doc_est(est_pts, thresh = thresh,
 	depth_var = 'Depth', sg_var = 'SEAGRASS'
 	)
 
+# actual ests
+act_ests <- dat$ests
 
 # format estimate for plot title
-if(is.na(act_ests)){ act_ests <- 'Depth of col: Not estimable'
+if(any(is.na(act_ests))){ act_ests <- 'Depth of col: Not estimable'
 } else { 
 	act_ests <- paste('Depth of col:', round(act_ests, 1), 'm')
 	}
 
 ##
 # simple plot of points by depth, all pts and those with seagrass
-to_plo <- dat
+to_plo <- dat$data
 to_plo <- melt(to_plo, id.var = 'Depth', 
 	measure.var = c('dep_cum', 'sg_cum'))
 to_plo$variable <- factor(to_plo$variable, levels = c('dep_cum', 'sg_cum'), 
@@ -188,37 +172,41 @@ p2 <- ggplot(to_plo, aes(x = Depth, y = value, group = variable,
 # treshold label for legend
 thresh_lab <- paste0(round(100 * thresh), '% of all')
 
-to_plo <- dat
+to_plo <- dat$data
 to_plo <- melt(to_plo, id.var = 'Depth', 
 	measure.var = c('dep_slo', 'sg_slo'))
 to_plo$variable <- factor(to_plo$variable, 
 	levels = c('dep_slo', 'sg_slo'), 
   labels = c('All', 'Seagrass'))
 
-to_plo2 <- dat
+to_plo2 <- dat$thresh
 to_plo2 <- melt(to_plo2, id.var = 'Depth', 
-	measure.var = grep('dep_est|sg_est|Threshold', names(dat), value = T)
+	measure.var = grep('dep_slo|sg_slo|Threshold', names(to_plo2), value = T)
 	)
+to_plo2$variable <- factor(to_plo2$variable)
 to_plo2$variable <- factor(to_plo2$variable, 
+	levels = c('dep_slo', 'sg_slo', grep('Thresh', levels(to_plo2$variable), value = T)),
 	labels = c('All', 'Seagrass', thresh_lab)
 )
 
 col_pts <- rep(cols[1], nrow(to_plo))
 col_pts[to_plo$variable == 'All'] <- cols[2]
 
-p3 <- ggplot(to_plo, aes(x = Depth, y = value)) +
-  geom_point(size = 3, shape = 16, colour = col_pts
+p3 <- ggplot(to_plo2) +
+  geom_point(data = to_plo, aes(x = Depth, y = value), 
+  	size = 3, shape = 16, colour = col_pts
   	) +
 	geom_line(data = to_plo2, aes(x = Depth, y = value,
-		colour = variable, linetype = variable), size = linesz) +
+		colour = variable, linetype = variable),
+		size = linesz) +
  	ylab('CDF Slope') +
   xlab('Depth (m)') +
-  scale_colour_manual('Slope category', 
-  	values = c(cols[2], cols[1], cols[2], cols[2])
-  	) +
 	scale_linetype_manual('Slope category', 
-		values = c('solid', 'solid', 'dashed', 'dashed')
+		values = c('solid', 'solid', 'dashed')
 		) + 
+	scale_colour_manual('Slope category', 
+  	values = c(cols[2], cols[1], cols[2])
+  	) +
   theme(legend.position = c(1, 1), legend.justification = c(1, 1))
 
 ##

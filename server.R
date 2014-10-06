@@ -72,10 +72,12 @@ shinyServer(function(input, output) {
         
         eval_pt <- pts[i, ]
         buff_pts <- buff_ext(sgpts_shp, eval_pt, buff = radius)
-        ests <- doc_est(data.frame(buff_pts), thresh = thresh, 
-        								depth_var = 'GRID_CODE', sg_var = 'SEAGRASS' 
+      	est_pts <- data.frame(buff_pts)
+				est_pts$Depth <- -1 * est_pts$GRID_CODE
+        ests <- doc_est(est_pts, thresh = thresh, 
+        								depth_var = 'Depth', sg_var = 'SEAGRASS' 
         								)
-        maxd[[i]] <- ests
+        maxd[[i]] <- ests$ests
         
       }
       
@@ -169,30 +171,27 @@ shinyServer(function(input, output) {
 			
 			# data
 			dat <- doc_est(est_pts, thresh = thresh, 
-				depth_var = 'Depth', sg_var = 'SEAGRASS', 
-				dat_out = T
-				)
-			
-			# get actual estimates for depth of col
-			act_ests <- doc_est(est_pts, thresh = thresh,
 				depth_var = 'Depth', sg_var = 'SEAGRASS'
 				)
-
-    	
+			
+			# actual ests
+			act_ests <- dat$ests
+			
     	# format estimate for plot title
-			if(is.na(act_ests)){ act_ests <- 'Depth of col: Not estimable'
+			if(any(is.na(act_ests))){ act_ests <- 'Depth of col: Not estimable'
 			} else { 
-				act_ests <- paste('Depth of col:', -1 * round(act_ests, 1), 'm')
+				act_ests <- paste('Depth of col:', round(act_ests, 1), 'm')
 				}
 
     	##
 			# simple plot of points by depth, all pts and those with seagrass
-			to_plo <- dat
+			to_plo <- dat$data
 			to_plo <- melt(to_plo, id.var = 'Depth', 
 				measure.var = c('dep_cum', 'sg_cum'))
 			to_plo$variable <- factor(to_plo$variable, levels = c('dep_cum', 'sg_cum'), 
 			                            labels = c('All', 'Seagrass'))
-    	
+			
+			    	
 			cols  <- c('lightgreen', 'lightblue')
 			linesz <- 1
 			
@@ -201,7 +200,7 @@ shinyServer(function(input, output) {
 			  geom_line(size = linesz) +
 			 	ylab('Cumulative points') +
 			  xlab('Depth (m)') +
-			  scale_colour_manual('Point category', values = cols) +
+			  scale_colour_manual('Point category', values = rev(cols)) +
 			  theme(legend.position = c(0, 1), legend.justification = c(0,1))
 			
 			##
@@ -210,24 +209,29 @@ shinyServer(function(input, output) {
 			# treshold label for legend
 			thresh_lab <- paste0(round(100 * thresh), '% of all')
 			
-			to_plo <- dat
+    	# data for slope points
+			to_plo <- dat$data
 			to_plo <- melt(to_plo, id.var = 'Depth', 
 				measure.var = c('dep_slo', 'sg_slo'))
 			to_plo$variable <- factor(to_plo$variable, 
 				levels = c('dep_slo', 'sg_slo'), 
 			  labels = c('All', 'Seagrass'))
-			
-			to_plo2 <- dat
+		
+    	# data for slope regression ests and thresholds
+			to_plo2 <- dat$thresh
 			to_plo2 <- melt(to_plo2, id.var = 'Depth', 
-				measure.var = grep('dep_est|sg_est|Threshold', names(dat), value = T)
+				measure.var = grep('dep_slo|sg_slo|Threshold', names(to_plo2), value = T)
 				)
+			to_plo2$variable <- factor(to_plo2$variable)
 			to_plo2$variable <- factor(to_plo2$variable, 
+				levels = c('dep_slo', 'sg_slo', grep('Thresh', levels(to_plo2$variable), value = T)),
 				labels = c('All', 'Seagrass', thresh_lab)
 			)
-			
-			col_pts <- rep(cols[1], nrow(to_plo))
+
+    	col_pts <- rep(cols[1], nrow(to_plo))
 			col_pts[to_plo$variable == 'All'] <- cols[2]
-			
+    	
+    	# plot slope data
 			p3 <- ggplot(to_plo, aes(x = Depth, y = value)) +
 			  geom_point(size = 3, shape = 16, colour = col_pts
 			  	) +
@@ -236,10 +240,10 @@ shinyServer(function(input, output) {
 			 	ylab('CDF Slope') +
 			  xlab('Depth (m)') +
 			  scale_colour_manual('Slope category', 
-			  	values = c(cols[2], cols[1], cols[2], cols[2])
+			  	values = c(cols[2], cols[1], cols[2])
 			  	) +
 				scale_linetype_manual('Slope category', 
-					values = c('solid', 'solid', 'dashed', 'dashed')
+					values = c('solid', 'solid', 'dashed')
 					) + 
 			  theme(legend.position = c(1, 1), legend.justification = c(1, 1))
 			
