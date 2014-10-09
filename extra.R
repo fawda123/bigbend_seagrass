@@ -1,5 +1,8 @@
 source('.Rprofile')
 
+##
+# get data for doc
+
 # segment polygon for old tampa bay
 seg_shp <- readShapeSpatial('seagrass_gis/seg_820.shp')
 
@@ -17,7 +20,6 @@ radius <- 0.04
 thresh <- 0.1   	
 show_all <- F
     
-
 # random points  
 set.seed(grid_seed)
 pts <- grid_est(seg_shp, spacing = grid_spc) 
@@ -29,190 +31,59 @@ test_pt <- pts[test_pt, ]
 buff_pts <- buff_ext(sgpts_shp, test_pt, buff = radius)
   
 ##
-# parameter optimization for a linear regression
+# example
 
-set.seed(123)
-vals <- 1000
-x <- runif(vals, 0, 15)
-y <- 20 + 5 * x + rnorm(vals, 0,10)
-plot(x, y)
+maxd <- list()
+for(i in 1:length(pts)){
+  
+  eval_pt <- pts[i, ]
+  buff_pts <- buff_ext(sgpts_shp, eval_pt, buff = radius)
+	est_pts <- data.frame(buff_pts)
+	est_pts$Depth <- -1 * est_pts$GRID_CODE
+  ests <- doc_est(est_pts, thresh = thresh, 
+  								depth_var = 'Depth', sg_var = 'SEAGRASS' 
+  								)
+  maxd[[i]] <- ests$ests
+  
+}
 
-dat_in <- data.frame(x, y)
+# combine in data frame for plotting
+maxd <- data.frame(pts, zmax_all = do.call('c', maxd))
 
-err_est <- function(parms = list(b1, b2), dat = dat_in, 
-	var_names = c('x', 'y')){
-	
-	b1 <- parms[[1]]
-	b2 <- parms[[2]]
-	
-	pred <- b1 + b2 * dat[, var_names[1]]
-	act <- dat[, var_names[2]]
-	
-	sum((pred - act)^2)
-	
-	}
+# get values for combined legend
+rngs <- range(maxd$zmax_all, na.rm = T)
+brks <- seq(rngs[1], rngs[2], length = 5)
+labs <- format(round(brks, 1), nsmall = 1, digits =1)
 
-optim(c(0, 0), err_est)
-
-##
-# find parameters using least squares
-
-set.seed(123)
-vals <- 100
-x <- runif(vals, 0, 15)
-y <- dgamma(x, shape = 2, scale = 2) + rnorm(vals, 0, 0.1) # errors are norm and iid
-plot(x, y)
-dat_in <- data.frame(x, y)
-
-err_est <- function(parms = list(b1, b2), dat = dat_in, 
-	var_names = c('x', 'y')){
-	
-	b1 <- parms[[1]]
-	b2 <- parms[[2]]
-	
-	to_comp <- dgamma(dat[, var_names[1]], shape = b1, scale = b2)
-	act <- dat[, var_names[2]]
-	
-	# sums of squared errors
-	sum((to_comp - act)^2, na.rm = T)
-	
-	}
-
-
-res <- optim(c(2,2), err_est)$par
-names(res) <- c('b1', 'b2')
-new.x <- seq(0, 15, length = 500)
-pred <- dgamma(new.x, shape = res['b1'], scale = res['b2'])
-
-plot(x, y)
-lines(new.x, pred, col = 'blue')
+# unestimable points to plot
+unest <- maxd[is.na(maxd[, 'zmax_all']), ]
 
 ##
-# find parameters using negative log-likelihood
-set.seed(123)
-vals <- 100
-x <- runif(vals, 0, 15)
-y <- dgamma(x, shape = 2, scale = 2) + rnorm(vals, 0, 0.1) # errors are norm and iid
-plot(x, y)
-dat_in <- data.frame(x, y)
+# plot
 
-err_est <- function(parms = list(b1, b2, b3), dat = dat_in, 
-	var_names = c('x', 'y')){
-	
-	b1 <- parms[[1]]
-	b2 <- parms[[2]]
-	b3 <- parms[[3]]
-	
-	# estimated and actual data
-	to_comp <- dgamma(dat[, var_names[1]], shape = b1, scale = b2)
-	act <- dat[, var_names[2]]
-	
-	# residuals, then random ests from dnorm
-	resids <- act - to_comp
-	resids <- suppressWarnings(dnorm(resids, 0, b3))
-	
-	# neg log-likelihood
-	-sum(log(resids))
-	
-	}
-
-res <- optim(c(2, 2, 0.1), err_est)$par
-names(res) <- c('b1', 'b2')
-new.x <- seq(0, 15, length = 500)
-pred <- dgamma(new.x, shape = res['b1'], scale = res['b2'])
-
-plot(x, y)
-lines(new.x, pred, col = 'blue')
-
-##
-# example w/ actual data
-
-# get data used to estimate depth of col
-thresh <- c(0.1)
-
-est_pts <- data.frame(buff_pts)
-est_pts$Depth <- -1 * est_pts$GRID_CODE
-
-# data
-dat <- doc_est(est_pts, thresh = thresh, 
-	depth_var = 'Depth', sg_var = 'SEAGRASS'
-	)
-
-# actual ests
-act_ests <- dat$ests
-
-# format estimate for plot title
-if(any(is.na(act_ests))){ act_ests <- 'Depth of col: Not estimable'
-} else { 
-	act_ests <- paste('Depth of col:', round(act_ests, 1), 'm')
-	}
-
-##
-# simple plot of points by depth, all pts and those with seagrass
-to_plo <- dat$data
-to_plo <- melt(to_plo, id.var = 'Depth', 
-	measure.var = c('dep_cum', 'sg_cum'))
-to_plo$variable <- factor(to_plo$variable, levels = c('dep_cum', 'sg_cum'), 
-                            labels = c('All', 'Seagrass'))
-
-cols  <- c('lightgreen', 'lightblue')
-linesz <- 1
-
-p2 <- ggplot(to_plo, aes(x = Depth, y = value, group = variable,
-                         colour = variable)) +
-  geom_line(size = linesz) +
- 	ylab('Cumulative points') +
-  xlab('Depth (m)') +
-  scale_colour_manual('Point category', values = cols) +
-  theme(legend.position = c(0, 1), legend.justification = c(0,1))
-
-##
-# plot slope of cumulative point curves
-
-# treshold label for legend
-thresh_lab <- paste0(round(100 * thresh), '% of all')
-
-to_plo <- dat$data
-to_plo <- melt(to_plo, id.var = 'Depth', 
-	measure.var = c('dep_slo', 'sg_slo'))
-to_plo$variable <- factor(to_plo$variable, 
-	levels = c('dep_slo', 'sg_slo'), 
-  labels = c('All', 'Seagrass'))
-
-to_plo2 <- dat$thresh
-to_plo2 <- melt(to_plo2, id.var = 'Depth', 
-	measure.var = grep('dep_slo|sg_slo|Threshold', names(to_plo2), value = T)
-	)
-to_plo2$variable <- factor(to_plo2$variable)
-to_plo2$variable <- factor(to_plo2$variable, 
-	levels = c('dep_slo', 'sg_slo', grep('Thresh', levels(to_plo2$variable), value = T)),
-	labels = c('All', 'Seagrass', thresh_lab)
-)
-
-col_pts <- rep(cols[1], nrow(to_plo))
-col_pts[to_plo$variable == 'All'] <- cols[2]
-
-p3 <- ggplot(to_plo2) +
-  geom_point(data = to_plo, aes(x = Depth, y = value), 
-  	size = 3, shape = 16, colour = col_pts
-  	) +
-	geom_line(data = to_plo2, aes(x = Depth, y = value,
-		colour = variable, linetype = variable),
-		size = linesz) +
- 	ylab('CDF Slope') +
-  xlab('Depth (m)') +
-	scale_linetype_manual('Slope category', 
-		values = c('solid', 'solid', 'dashed')
-		) + 
-	scale_colour_manual('Slope category', 
-  	values = c(cols[2], cols[1], cols[2])
-  	) +
-  theme(legend.position = c(1, 1), legend.justification = c(1, 1))
-
-##
-# combine all plots
-
-grid.arrange(p1,
-	arrangeGrob(p2, p3, ncol = 2), 
-	ncol = 1, heights = c(1.25, 1),
-	main = act_ests)
+p1 <- ggplot(seg_shp, aes(long, lat)) + 
+  geom_polygon(fill = 'white') +
+  geom_path(color = 'black') +
+  theme_classic() +
+  coord_equal() +
+	ylab('Latitude') + 
+	xlab('Longitude') +
+  geom_point(
+    data = maxd, 
+    aes(Var1, Var2, size = zmax_all, colour = zmax_all)
+  ) +
+# 				geom_point(data = unest,
+# 					aes(Var1, Var2), 
+# 					size = 3, colour = 'grey',
+# 					pch = 1
+# 					) +
+  ggtitle('Depth of col (m)') +
+	theme(legend.position = c(0,0), legend.justification = c(0, 0)) + 
+	scale_size_continuous(name = "Depth estimate", 
+		breaks = brks, 
+		labels = labs,
+		range = c(1, 12)) + 
+	scale_colour_gradient(name = "Depth estimate", 
+		breaks = brks, 
+		labels = labs) + 
+ 	guides(colour = guide_legend())

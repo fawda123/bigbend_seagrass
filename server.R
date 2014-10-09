@@ -81,13 +81,9 @@ shinyServer(function(input, output) {
         
       }
       
-    	# combine in data frame for plotting
-			maxd <- data.frame(do.call('rbind', maxd))
-			maxd <- data.frame(
-				pts, 
-				-1 * maxd
-				)
-			
+			# combine in data frame for plotting
+			maxd <- data.frame(pts, zmax_all = do.call('c', maxd))
+    	
     	# get values for combined legend
 			rngs <- range(maxd$zmax_all, na.rm = T)
 			brks <- seq(rngs[1], rngs[2], length = 5)
